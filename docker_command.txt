@@ -1,0 +1,12 @@
+
+# Building the dockerfile
+docker build -t ros2_iron:latest .
+
+# Creating a docker container with volume mount
+docker run -it --name mcwastenot -v /Users/adamf/Documents/ubc_2023-24/IGEN430/volume:/home/volume ros2_iron:latest
+
+# Start non running docker
+docker start mcwastenot 
+
+# Enter the running docker
+docker exec -it mcwastenot bash
