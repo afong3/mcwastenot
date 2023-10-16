@@ -1,9 +1,9 @@
 
-# Building the dockerfile
-docker build -t ros2_iron:latest .
+# Building the Dockerfile to make the image
+docker build -t moveit2_image:latest .
 
 # Creating a docker container with volume mount
-docker run -it --name mcwastenot -v /Users/adamf/Documents/ubc_2023-24/IGEN430/volume:/home/volume ros2_iron:latest
+docker run -it --name mcwastenot -v /Users/adamf/Documents/ubc_2023-24/IGEN430/volume:/home/volume moveit2_image:latest
 
 # Start non running docker
 docker start mcwastenot 
