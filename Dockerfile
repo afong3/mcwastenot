@@ -1,51 +1,116 @@
-FROM osrf/ros:iron-desktop
+#---
+# name: kinect
+# alias: igen
+# depends: []
+# config: config.py
+# test: test.py
+# docs: README.md
+#---
+FROM dustynv/ros:noetic-desktop-l4t-r32.7.1
 
-# Install Moveit2 https://moveit.picknik.ai/main/doc/tutorials/getting_started/getting_started.html
-RUN . /opt/ros/iron/setup.sh # instead of source
+SHELL ["/bin/bash", "-c"]
+ENV SHELL /bin/bash
 
-RUN apt update
-RUN apt dist-upgrade -y
+ENV DEBIAN_FRONTEND=noninteractive
+ARG MAKEFLAGS=-j$(nproc)
+ENV LANG=en_US.UTF-8 
+ENV PYTHONIOENCODING=utf-8
+RUN locale-gen en_US en_US.UTF-8 && update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
+
+ENV PACKAGE_SOURCE=/workspace/ros_catkin_ws/src/
+ENV ROS_WS=/workspace/ros_catkin_ws
+
+WORKDIR /workspace/ros_catkin_ws/src
+
+# installing libfreenect2
+
+#RUN git clone https://github.com/OpenKinect/libfreenect2.git
+RUN git clone https://github.com/geoffviola/libfreenect2
+RUN sudo apt-get update && \
+	sudo apt-get install -y \
+	build-essential \
+	cmake \
+	pkg-config \
+	libusb-1.0-0-dev \
+	libturbojpeg0-dev \
+	libglfw3-dev \
+	&& rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+WORKDIR /workspace/ros_catkin_ws/src/libfreenect2
+
+RUN mkdir build 
+WORKDIR /workspace/ros_catkin_ws/src/libfreenect2/build
+RUN cmake .. \
+	-DCUDA_PROPAGATE_HOST_FLAGS=off \
+	-DCMAKE_INSTALL_PREFIX=/workspace/ros_catkin_ws/src/freenect2 \
+	-D CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-10.2/
+RUN make
+RUN make install
+#RUN cmake -Dfreenect2_DIR=/root/freenect2/lib/cmake/freenect2
+
+RUN sudo mkdir -p /etc/udev/rules.d/
+RUN sudo cp /workspace/ros_catkin_ws/src/libfreenect2/platform/linux/udev/90-kinect2.rules /etc/udev/rules.d/
+
+# ROS PACKAGE DEPENDENCIES THAT WE NEED TO BUILD FROM SOURCE
+# Reference: http://wiki.ros.org/noetic/Installation/Source
+# tf, compressed_depth_image_transport (strangely needs to be the indigo-devel branch), kinect2_registration, cv_bridge?,
+# nodelet, compressed_image_transport, libpcl-all-dev, bondcpp, angles on the master branch, tf2 
+
+# Note that some poeple just changed the python37 requirement on the cv_bridge cmakelists to make it work. maybeI should do that instead 
+# of setting all of the python directories 
+
+# Install geometry package (depends on tf)
+WORKDIR /workspace/ros_catkin_ws/src
+RUN git clone https://github.com/ros/geometry.git 
+RUN git clone https://github.com/ros-perception/image_transport_plugins.git
+WORKDIR /workspace/ros_catkin_ws/src/image_transport_plugins
+RUN git checkout -b hydro-devel
+WORKDIR /workspace/ros_catkin_ws/src
+RUN git clone https://github.com/ros/nodelet_core.git
+RUN git clone https://github.com/ros/bond_core.git 
+RUN sudo apt-get update && \
+	sudo apt-get install -y \
+	libpcl-dev \
+	vim && \
+	rm -rf /var/lib/apt/lists/* && \
+    apt-get clean
+
 RUN rosdep update
 
-RUN apt install -y \
-  build-essential \
-  cmake \
-  git \
-  libbullet-dev \
-  python3-colcon-common-extensions \
-  python3-flake8 \
-  python3-pip \
-  python3-pytest-cov \
-  python3-rosdep \
-  python3-setuptools \
-  python3-vcstool \
-  wget && \
-# install some pip packages needed for testing
-python3 -m pip install -U \
-  argcomplete \
-  flake8-blind-except \
-  flake8-builtins \
-  flake8-class-newline \
-  flake8-comprehensions \
-  flake8-deprecated \
-  flake8-docstrings \
-  flake8-import-order \
-  flake8-quotes \
-  pytest-repeat \
-  pytest-rerunfailures \
-  pytest
+RUN git clone https://github.com/afong3/vision_opencv.git && \
+	cd vision_opencv && \
+	git checkout noetic 
 
-RUN apt remove ros-$ROS_DISTRO-moveit*
+## Cloning a fork of the original iai_kinectv2 because Opencv4 compatability
+# RUN rosdep install -r --from-paths .
+# WORKDIR /workspace/ros_catkin_ws/src
+RUN git clone https://github.com/ros/angles.git && \
+	cd /workspace/ros_catkin_ws/src/angles && \
+	git checkout master
 
-ENV COLCON_WS=/ws_moveit2
-RUN mkdir -p $COLCON_WS/src
-WORKDIR $COLCON_WS/src
+WORKDIR /workspace/ros_catkin_ws/src
+RUN rm -r common_msgs 
+RUN git clone https://github.com/ros/geometry2.git
+RUN git clone https://github.com/ros/common_msgs.git
 
-RUN git clone https://github.com/ros-planning/moveit2.git -b $ROS_DISTRO
-RUN for repo in moveit2/moveit2.repos $(f="moveit2/moveit2_$ROS_DISTRO.repos"; test -r $f && echo $f); do vcs import < "$repo"; done
-RUN rosdep install -r --from-paths . --ignore-src --rosdistro $ROS_DISTRO -y
+RUN git clone https://github.com/ros/actionlib.git
+RUN git clone https://github.com/ros/dynamic_reconfigure.git
+RUN git clone https://github.com/ros-perception/perception_pcl.git
+WORKDIR /workspace/ros_catkin_ws/src/perception_pcl
+RUN git checkout melodic-devel
+WORKDIR /workspace/ros_catkin_ws/src
+RUN git clone https://github.com/ros-perception/pcl_msgs.git
+WORKDIR /workspace/ros_catkin_ws
+RUN source /opt/ros/noetic/setup.bash && \
+	./src/catkin/bin/catkin_make_isolated --install \
+	-DCMAKE_BUILD_TYPE=Release  --only-pkg-with-deps \
+	-j2 pcl_ros
 
-RUN apt install ros-$ROS_DISTRO-rmw-cyclonedds-cpp -y
-RUN export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+# RUN /bin/bash -c ". /opt/ros/noetic/setup.bash; cd /home/ros/ros_ws; catkin_make -DCMAKE_BUILD_TYPE='Release' -Dfreenect2_DIR=/home/ros/ros_ws/freenect2/lib/cmake/freenect2 -DCMAKE_CXX_STANDARD=14"
 
+# clean image
+RUN sudo apt-get clean && sudo rm -rf /var/lib/apt/lists/*
+
+# ENTRYPOINT ["/ros_entrypoint.sh"]
 CMD ["bash"]
