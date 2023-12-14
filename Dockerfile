@@ -107,8 +107,6 @@ RUN source /opt/ros/noetic/setup.bash && \
 	-DCMAKE_BUILD_TYPE=Release  --only-pkg-with-deps \
 	-j2 pcl_ros
 
-# RUN /bin/bash -c ". /opt/ros/noetic/setup.bash; cd /home/ros/ros_ws; catkin_make -DCMAKE_BUILD_TYPE='Release' -Dfreenect2_DIR=/home/ros/ros_ws/freenect2/lib/cmake/freenect2 -DCMAKE_CXX_STANDARD=14"
-
 # clean image
 RUN sudo apt-get clean && sudo rm -rf /var/lib/apt/lists/*
 
